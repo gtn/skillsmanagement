@@ -94,17 +94,17 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
      * @param boolean $notify print notice with link and terminate
      */
     function user_signup($user, $notify=true) {
-        global $CFG, $DB;
-        require_once($CFG->dirroot.'/user/profile/lib.php');
-        require_once($CFG->dirroot.'/user/lib.php');
-		require_once($CFG->dirroot.'/blocks/exacomp/lib/lib.php');
+        global $CFG;
 
         $password = $user->password;
         $user->password = hash_internal_user_password($user->password);
         if (empty($user->calendartype)) {
             $user->calendartype = $CFG->calendartype;
         }
-		
+
+        require_once($CFG->dirroot.'/user/profile/lib.php');
+        require_once($CFG->dirroot.'/user/lib.php');
+
 		$user_2 = new stdClass();
 		$user_2->firstname = get_string('firstname', 'auth_skillmanagement');
 		$user_2->lastname = get_string('lastname', 'auth_skillmanagement');
@@ -115,248 +115,18 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 		$user_2->username = 'student_'.$user->username;
 		$user_2->lang = $user->lang;
 		$user_2->mnethostid = 1;
-       
-        $user_2->id = user_create_user($user_2, false, false);
-        profile_save_data($user_2);
-		
+
+		$user_2->id = user_create_user($user_2, false, false);
+		profile_save_data($user_2);
+
 		//$user->confirmed = 1;
         $user->id = user_create_user($user, false, false);
 
         // Save any custom profile field information.
         profile_save_data($user);
-       
-        /*CREATE COURSE CATEGORY*/
-        //check if course category has already been created
-      	$category_already_exists = false;
-        $max_sort = 0;
-        $categoryid = 0;
-      	$category_sortoder= 0;
-        $categorycontext = 0;
-        $categorycontextpath = '';
-                
-        $course_categories = $DB->get_records('course_categories');
-        foreach($course_categories as $category){
-         	if(strcmp($category->name, 'Skillmanagement')==0){
-            	$category_already_exists = true;
-                $categoryid = $category->id;
-                $category_sortoder = $category->sortorder;
-                		
-                $context = $DB->get_record('context', array('instanceid'=>$categoryid, 'contextlevel'=>40));
-                $categorycontext = $context->id;
-                $categorycontextpath = $context->path;
-                		
-          	} elseif($category->sortorder > $max_sort){
-                $max_sort = $category->sortorder;
-            }
-     	}
-                
-        //if not->create
-        if(!$category_already_exists){
-           	/*INSERT IN COURSE_CATEGORIES*/
-            $insert = new stdClass();
-            $insert->name = 'Skillmanagement';
-            $insert->description = '<p>Dieser Kursbereich wird für automatisch generierte Kurse von Skillmanagement verwendet.</p>';
-            $insert->descriptionformat = 1;
-            $insert->sortorder = $max_sort + 10000;
-            $insert->timemodified = time();
-            $insert->depth = 1;
-                	
-            $insertedid = $DB->insert_record('course_categories', $insert);
-            $inserted = $DB->get_record('course_categories', array('id'=>$insertedid));
-                	
-            $categoryid = $inserted->id;
-            $category_sortoder = $inserted->sortorder;
-                	
-            $update = new stdClass();
-            $update->id = $inserted->id;
-            $update->path = '/'.$inserted->id;
-                	
-            $DB->update_record('course_categories', $update);
-                	
-            /*INSERT IN CONTEXT*/
-            $insert = new stdClass();
-            $insert->contextlevel = 40;
-            $insert->instanceid = $inserted->id;
-            $insert->depth = 2;
-                	
-            $insertedid = $DB->insert_record('context', $insert);
-            $inserted = $DB->get_record('context', array('id'=>$insertedid));
-                	
-            $categorycontext = $inserted->id;
-            $categorycontextpath = '/1/'.$inserted->id;
-                	
-            $update = new stdClass();
-            $update->id = $inserted->id;
-            $update->path = '/1/'.$inserted->id;
-                	
-            $DB->update_record('context', $update);
-       	}
-                
-        /*TESTED AND WORKING CORRECTLY TILL HERE*/
-                
-        $categorycourses = $DB->get_records_sql('SELECT * FROM {course} WHERE category=?', array($categoryid));
-                
-                
-        /*CREATE COURSE*/
-                
-        //insert in course-table
-        $insert = new stdClass();
-        $insert->category = $categoryid;
-        $insert->sortorder = $category_sortoder + count($categorycourses) + 1;
-        $insert->fullname = 'Skillmanagement_'.$user->id.'_'.$user->lastname;
-        $insert->shortname = 'skillmgmt'.$user->id;
-        $insert->format = 'weeks';
-        $insert->summaryformat = 1;
-        $insert->startdate = time();
-        $insert->timecreated = time();
-        $insert->timemodified = time();
-        $insert->cacherev = time();
-              	
-        $user_course = create_course($insert);
-        $user_course_id = $user_course->id;
-                
-        /*CREATE EXABIS BLOCK INSTANCES IN COURSE*/
-        $page = new moodle_page();
-   		$page->set_course($user_course);
-   		$page->blocks->add_region('side-post');
-   		$page->blocks->add_block('exacomp', 'side-post', 4, false, 'course-view-*');
-		$page->blocks->add_block('exaport', 'side-post', 4, false, 'course-view-*');
-   		$page->blocks->add_block('exastud', 'side-post', 4, false, 'course-view-*');
-		
-		/*SET DEFAULT TYPES FOR COURSE*/
-		if($user->lang == "en")
-			$schooltypes = array(1,2); //Social Competencies and Personal Competencies
-		else
-			$schooltypes = array(3,4);	//Soziale Kompetenzen, Personale Kompetenzen
-			
-		block_exacomp_set_mdltype($schooltypes,$user_course_id);
-		$subjects = block_exacomp_get_subjects_for_schooltype($user_course_id);
-		$coursetopics = array();
-		foreach($subjects as $subject) {
-			$topics = block_exacomp_get_all_topics($subject->id);
-			foreach($topics as $topic)
-				$coursetopics[] = $topic->id;
-		}
-		block_exacomp_set_coursetopics($user_course_id,$coursetopics);
 
-   		
-    	/*CREATE COURSE DESCRIPTION*/
-    	$label = new stdClass();
-    	$label->intro = get_string('course_description', 'auth_skillmanagement');
-    	$label->intro .= html_writer::empty_tag('br');
-    	$label->intro .= html_writer::empty_tag('img', array('src'=>new moodle_url('/auth/skillmanagement/pix/intro.png'), 'alt'=>'intro'));
-    	
-    	$label->course = $user_course_id;
-    	$label->introformat = 1;
-    	$labelid = label_add_instance($label);
-    	
-    	/*CREATE COURSE MODULE*/
-    	$label_module = $DB->get_record('modules', array('name'=>'label'));
-    	$section = $DB->get_record('course_sections', array('course'=>$user_course_id, 'section'=>0));
-    	
-    	$cm = new stdClass();
-    	$cm->course = $user_course_id;
-    	$cm->module = $label_module->id;
-    	$cm->instance = $labelid;
-    	$cm->section = $section->id;
-    	$cm->added = time();
-    	
-    	$cmid = $DB->insert_record('course_modules', $cm);
-    	course_add_cm_to_section($user_course_id, $cmid, 0);
-    	
-    	$course_context = context_course::instance($user_course_id);
-    	
-    	/*DELETE OTHER MODULES FROM COURSE*/
-    	//delete module recent activity
-    	/*$recent_activity = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'recent_activity'));
-    	course_delete_module($recent_activity->id);
-    	
-    	$search_forum = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'search_forums'));
-    	course_delete_module($search_forum->id);
-    	
-    	$news_items = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'news_items'));
-    	course_delete_module($news_items->id);
-    	
-    	$calendar = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'calendar_upcoming'));
-    	course_delete_module($calendar->id);
-    	
-    	/*CREATE SECOND USER WITH SAME PW*/
-        $user_trainer = $DB->get_record('user', array('id'=>$user->id));
-                
-        $user_trainee = $DB->get_record('user', array('username'=>'student_'.$user_trainer->username));
-		$user_trainee->confirmed = 1;
-		$user_trainee->idnumber = $user_trainer->id;
-                
-        $DB->update_record('user', $user_trainee);
-				
-		$user_trainer->idnumber = $user_trainee->id;
-		$DB->update_record('user', $user_trainer);
-                
-       	/*ENROL user_trainer AND user_trainee to $user_course */
-                
-        $enrolment = array('roleid' => 3,'userid' => $user_trainer->id,
-			'courseid' => $user_course->id,'timestart' => time(),
-			'timeend' => 0,'suspend' => 0);
-                
-        $enrol = enrol_get_plugin('manual');
+		$this->create_skillsmanagement($user, false);
 
-        $enrolinstances = enrol_get_instances($enrolment['courseid'], true);
-			
-        foreach ($enrolinstances as $courseenrolinstance) {
-			if ($courseenrolinstance->enrol == "manual") {
-				$instance = $courseenrolinstance;
-				break;
-			}
-		}
-        if (empty($instance)) {
-			$errorparams = new stdClass();
-			$errorparams->courseid = $enrolment['courseid'];
-			throw new moodle_exception('wsnoinstance', 'enrol_manual', $errorparams);
-		}
-        // Check that the plugin accept enrolment (it should always the case, it's hard coded in the plugin).
-		if (!$enrol->allow_enrol($instance)) {
-			$errorparams = new stdClass();
-			$errorparams->roleid = $enrolment['roleid'];
-			$errorparams->courseid = $enrolment['courseid'];
-			$errorparams->userid = $enrolment['userid'];
-			throw new moodle_exception('wscannotenrol', 'enrol_manual', '', $errorparams);
-		}
-				
-		$enrol->enrol_user($instance, $enrolment['userid'], $enrolment['roleid'],
-			$enrolment['timestart'], $enrolment['timeend'], $enrolment['suspend']);
-
-		//enrol participant
-		$enrolment = array('roleid' => 5,'userid' => $user_trainee->id,
-			'courseid' => $user_course->id,'timestart' => time(),
-			'timeend' => 0,'suspend' => 0);
-                
-        $enrol = enrol_get_plugin('manual');
-
-        $enrolinstances = enrol_get_instances($enrolment['courseid'], true);
-			
-        foreach ($enrolinstances as $courseenrolinstance) {
-			if ($courseenrolinstance->enrol == "manual") {
-				$instance = $courseenrolinstance;
-				break;
-			}
-		}
-        if (empty($instance)) {
-			$errorparams = new stdClass();
-			$errorparams->courseid = $enrolment['courseid'];
-			throw new moodle_exception('wsnoinstance', 'enrol_manual', $errorparams);
-		}
-        // Check that the plugin accept enrolment (it should always the case, it's hard coded in the plugin).
-		if (!$enrol->allow_enrol($instance)) {
-			$errorparams = new stdClass();
-			$errorparams->roleid = $enrolment['roleid'];
-			$errorparams->courseid = $enrolment['courseid'];
-			$errorparams->userid = $enrolment['userid'];
-			throw new moodle_exception('wscannotenrol', 'enrol_manual', '', $errorparams);
-		}
-				
-		$enrol->enrol_user($instance, $enrolment['userid'], $enrolment['roleid'],
-			$enrolment['timestart'], $enrolment['timeend'], $enrolment['suspend']);
-	
 		//purge_all_caches();
 		
 		$this->user_confirm($user->username, $user->secret);
@@ -367,6 +137,271 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 		redirect($CFG->wwwroot.'/course/view.php?id='.$user_course_id);
 		return true;
     }
+
+	public function create_skillsmanagement($user, $testing_mode) {
+		global $DB, $CFG;
+
+		require_once($CFG->dirroot.'/blocks/exacomp/lib/lib.php');
+
+        /*CREATE COURSE CATEGORY*/
+        //check if course category has already been created
+      	$category_already_exists = false;
+        $max_sort = 0;
+        $categoryid = 0;
+      	$category_sortoder= 0;
+        $categorycontext = 0;
+        $categorycontextpath = '';
+
+        $course_categories = $DB->get_records('course_categories');
+        foreach($course_categories as $category){
+         	if(strcmp($category->name, 'Skillmanagement')==0){
+            	$category_already_exists = true;
+                $categoryid = $category->id;
+                $category_sortoder = $category->sortorder;
+
+                $context = $DB->get_record('context', array('instanceid'=>$categoryid, 'contextlevel'=>40));
+                $categorycontext = $context->id;
+                $categorycontextpath = $context->path;
+
+          	} elseif($category->sortorder > $max_sort){
+                $max_sort = $category->sortorder;
+            }
+     	}
+
+        //if not->create
+        if(!$category_already_exists){
+           	/*INSERT IN COURSE_CATEGORIES*/
+            $insert = new stdClass();
+            $insert->name = 'Skillmanagement';
+            $insert->description = '<p>Dieser Kursbereich wird für automatisch generierte Kurse von Skillmanagement verwendet.</p>';
+            $insert->descriptionformat = 1;
+            $insert->sortorder = $max_sort + 10000;
+            $insert->timemodified = time();
+            $insert->depth = 1;
+
+            $insertedid = $DB->insert_record('course_categories', $insert);
+            $inserted = $DB->get_record('course_categories', array('id'=>$insertedid));
+
+            $categoryid = $inserted->id;
+            $category_sortoder = $inserted->sortorder;
+
+            $update = new stdClass();
+            $update->id = $inserted->id;
+            $update->path = '/'.$inserted->id;
+
+            $DB->update_record('course_categories', $update);
+
+            /*INSERT IN CONTEXT*/
+            $insert = new stdClass();
+            $insert->contextlevel = 40;
+            $insert->instanceid = $inserted->id;
+            $insert->depth = 2;
+
+            $insertedid = $DB->insert_record('context', $insert);
+            $inserted = $DB->get_record('context', array('id'=>$insertedid));
+
+            $categorycontext = $inserted->id;
+            $categorycontextpath = '/1/'.$inserted->id;
+
+            $update = new stdClass();
+            $update->id = $inserted->id;
+            $update->path = '/1/'.$inserted->id;
+
+            $DB->update_record('context', $update);
+       	}
+
+        /*TESTED AND WORKING CORRECTLY TILL HERE*/
+
+		$user_course = $DB->get_record('course', ['shortname' => 'skillmgmt'.$user->id]);
+		if (!$user_course) {
+			$categorycourses = $DB->get_records_sql('SELECT * FROM {course} WHERE category=?', array($categoryid));
+
+
+			/*CREATE COURSE*/
+
+			//insert in course-table
+			$insert = new stdClass();
+			$insert->category = $categoryid;
+			$insert->sortorder = $category_sortoder + count($categorycourses) + 1;
+			$insert->fullname = 'Skillmanagement_'.$user->id.'_'.$user->lastname;
+				$insert->shortname = 'skillmgmt'.$user->id;
+			$insert->format = 'weeks';
+			$insert->summaryformat = 1;
+			$insert->startdate = time();
+			$insert->timecreated = time();
+			$insert->timemodified = time();
+			$insert->cacherev = time();
+
+			$user_course = create_course($insert);
+
+			/*CREATE EXABIS BLOCK INSTANCES IN COURSE*/
+			$page = new moodle_page();
+			$page->set_course($user_course);
+			$page->blocks->add_region('side-post');
+			$page->blocks->add_block('exacomp', 'side-post', 4, false, 'course-view-*');
+			$page->blocks->add_block('exaport', 'side-post', 4, false, 'course-view-*');
+			$page->blocks->add_block('exastud', 'side-post', 4, false, 'course-view-*');
+		}
+		$user_course_id = $user_course->id;
+
+		if (!$DB->get_record(\block_exacomp::DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ])) {
+
+			// TODO: import englisch version?
+			// if($user->lang == "en")
+
+			// import new for this user
+			\block_exacomp_data_importer::do_import_file('skills_mgmt_de.xml');
+
+			// last imported source
+			$source = $DB->get_record_sql("SELECT * FROM {".\block_exacomp::DB_DATASOURCES."} ORDER BY id DESC LIMIT 1");
+
+			// change source
+			$source->source = 'SKILLSMGMT-'.$user->id;
+			$source->name = 'Skills Management for '.fullname($user);
+			$DB->update_record(\block_exacomp::DB_DATASOURCES, $source);
+		}
+
+		// last imported schooltype
+		$schooltype = $DB->get_record(\block_exacomp::DB_SCHOOLTYPES, ['source' => $source->id]);
+
+		// $DB->insert_record(\block_exacomp::DB_MDLTYPES, ['stid' => $schooltype->id, 'courseid' => $user_course->id]);
+
+		/*SET DEFAULT TYPES FOR COURSE*/
+		/*
+		if($user->lang == "en")
+			$schooltypes = array(1,2); //Social Competencies and Personal Competencies
+		else
+			$schooltypes = array(3,4);	//Soziale Kompetenzen, Personale Kompetenzen
+		*/
+
+		block_exacomp_set_mdltype($schooltype->id,$user_course_id);
+		$subjects = block_exacomp_get_subjects_for_schooltype($user_course_id);
+		$coursetopics = array();
+		foreach($subjects as $subject) {
+			$topics = block_exacomp_get_all_topics($subject->id);
+			foreach($topics as $topic)
+				$coursetopics[] = $topic->id;
+		}
+		block_exacomp_set_coursetopics($user_course_id,$coursetopics);
+
+
+    	/*CREATE COURSE DESCRIPTION*/
+    	$label = new stdClass();
+    	$label->intro = get_string('course_description', 'auth_skillmanagement');
+    	$label->intro .= html_writer::empty_tag('br');
+    	$label->intro .= html_writer::empty_tag('img', array('src'=>new moodle_url('/auth/skillmanagement/pix/intro.png'), 'alt'=>'intro'));
+
+    	$label->course = $user_course_id;
+    	$label->introformat = 1;
+    	$labelid = label_add_instance($label);
+
+    	/*CREATE COURSE MODULE*/
+    	$label_module = $DB->get_record('modules', array('name'=>'label'));
+    	$section = $DB->get_record('course_sections', array('course'=>$user_course_id, 'section'=>0));
+
+    	$cm = new stdClass();
+    	$cm->course = $user_course_id;
+    	$cm->module = $label_module->id;
+    	$cm->instance = $labelid;
+    	$cm->section = $section->id;
+    	$cm->added = time();
+
+    	$cmid = $DB->insert_record('course_modules', $cm);
+    	course_add_cm_to_section($user_course_id, $cmid, 0);
+
+    	$course_context = context_course::instance($user_course_id);
+
+    	/*DELETE OTHER MODULES FROM COURSE*/
+    	//delete module recent activity
+    	/*$recent_activity = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'recent_activity'));
+    	course_delete_module($recent_activity->id);
+
+    	$search_forum = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'search_forums'));
+    	course_delete_module($search_forum->id);
+
+    	$news_items = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'news_items'));
+    	course_delete_module($news_items->id);
+
+    	$calendar = $DB->get_record('block_instances', array('parentcontextid'=>$course_context->id, 'blockname'=>'calendar_upcoming'));
+    	course_delete_module($calendar->id);
+
+    	/*CREATE SECOND USER WITH SAME PW*/
+        $user_trainer = $DB->get_record('user', array('id'=>$user->id));
+
+        $user_trainee = $DB->get_record('user', array('username'=>'student_'.$user_trainer->username));
+		$user_trainee->confirmed = 1;
+		$user_trainee->idnumber = $user_trainer->id;
+
+        $DB->update_record('user', $user_trainee);
+
+		$user_trainer->idnumber = $user_trainee->id;
+		$DB->update_record('user', $user_trainer);
+
+       	/*ENROL user_trainer AND user_trainee to $user_course */
+
+        $enrolment = array('roleid' => 3,'userid' => $user_trainer->id,
+			'courseid' => $user_course->id,'timestart' => time(),
+			'timeend' => 0,'suspend' => 0);
+
+        $enrol = enrol_get_plugin('manual');
+
+        $enrolinstances = enrol_get_instances($enrolment['courseid'], true);
+
+        foreach ($enrolinstances as $courseenrolinstance) {
+			if ($courseenrolinstance->enrol == "manual") {
+				$instance = $courseenrolinstance;
+				break;
+			}
+		}
+        if (empty($instance)) {
+			$errorparams = new stdClass();
+			$errorparams->courseid = $enrolment['courseid'];
+			throw new moodle_exception('wsnoinstance', 'enrol_manual', $errorparams);
+		}
+        // Check that the plugin accept enrolment (it should always the case, it's hard coded in the plugin).
+		if (!$enrol->allow_enrol($instance)) {
+			$errorparams = new stdClass();
+			$errorparams->roleid = $enrolment['roleid'];
+			$errorparams->courseid = $enrolment['courseid'];
+			$errorparams->userid = $enrolment['userid'];
+			throw new moodle_exception('wscannotenrol', 'enrol_manual', '', $errorparams);
+		}
+
+		$enrol->enrol_user($instance, $enrolment['userid'], $enrolment['roleid'],
+			$enrolment['timestart'], $enrolment['timeend'], $enrolment['suspend']);
+
+		//enrol participant
+		$enrolment = array('roleid' => 5,'userid' => $user_trainee->id,
+			'courseid' => $user_course->id,'timestart' => time(),
+			'timeend' => 0,'suspend' => 0);
+
+        $enrol = enrol_get_plugin('manual');
+
+        $enrolinstances = enrol_get_instances($enrolment['courseid'], true);
+
+        foreach ($enrolinstances as $courseenrolinstance) {
+			if ($courseenrolinstance->enrol == "manual") {
+				$instance = $courseenrolinstance;
+				break;
+			}
+		}
+        if (empty($instance)) {
+			$errorparams = new stdClass();
+			$errorparams->courseid = $enrolment['courseid'];
+			throw new moodle_exception('wsnoinstance', 'enrol_manual', $errorparams);
+		}
+        // Check that the plugin accept enrolment (it should always the case, it's hard coded in the plugin).
+		if (!$enrol->allow_enrol($instance)) {
+			$errorparams = new stdClass();
+			$errorparams->roleid = $enrolment['roleid'];
+			$errorparams->courseid = $enrolment['courseid'];
+			$errorparams->userid = $enrolment['userid'];
+			throw new moodle_exception('wscannotenrol', 'enrol_manual', '', $errorparams);
+		}
+
+		$enrol->enrol_user($instance, $enrolment['userid'], $enrolment['roleid'],
+			$enrolment['timestart'], $enrolment['timeend'], $enrolment['suspend']);
+	}
 
     /**
      * Returns true if plugin allows confirming of new users.
