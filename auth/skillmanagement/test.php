@@ -36,4 +36,4 @@ if (!$user) {
 
 
 $auth = get_auth_plugin('skillmanagement');
-$auth->create_skillsmanagement($USER, true);
+$auth->create_skillsmanagement($USER->id, true);

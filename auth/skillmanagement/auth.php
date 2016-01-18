@@ -94,7 +94,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
      * @param boolean $notify print notice with link and terminate
      */
     function user_signup($user, $notify=true) {
-        global $CFG;
+        global $DB, $CFG;
 
         $password = $user->password;
         $user->password = hash_internal_user_password($user->password);
@@ -105,43 +105,37 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
         require_once($CFG->dirroot.'/user/profile/lib.php');
         require_once($CFG->dirroot.'/user/lib.php');
 
-		$user_2 = new stdClass();
-		$user_2->firstname = get_string('firstname', 'auth_skillmanagement');
-		$user_2->lastname = get_string('lastname', 'auth_skillmanagement');
-		$user_2->confirmed = 1;
-		$user_2->password = $user->password;
-		$user_2->email = $user->email;
-		$user_2->auth = 'skillmanagement';
-		$user_2->username = 'student_'.$user->username;
-		$user_2->lang = $user->lang;
-		$user_2->mnethostid = 1;
-
-		$user_2->id = user_create_user($user_2, false, false);
-		profile_save_data($user_2);
-
-		//$user->confirmed = 1;
         $user->id = user_create_user($user, false, false);
 
         // Save any custom profile field information.
         profile_save_data($user);
 
-		$this->create_skillsmanagement($user, false);
+		$this->create_skillsmanagement($user->id, false);
 
 		//purge_all_caches();
 		
 		$this->user_confirm($user->username, $user->secret);
-		 @\core\session\manager::login_user($user_trainer);
-		//$this->user_login($user_trainer->username, $user->password);
-		
+		// @\core\session\manager::login_user($user);
+		complete_user_login($DB->get_record('user', ['id' => $user->id]));
+		//$this->user_login($user->username, $user->password);
+
+		$user_course = $DB->get_record('course', ['shortname' => 'SKILLSMGMT-'.$user->id]);
 		//redirect($CFG->wwwroot .'/login/confirm.php?data='. $user->secret .'/'. $user->username);
-		redirect($CFG->wwwroot.'/course/view.php?id='.$user_course_id);
+		redirect($CFG->wwwroot.'/course/view.php?id='.$user_course->id);
 		return true;
     }
 
-	public function create_skillsmanagement($user, $testing_mode) {
+	public function create_skillsmanagement($userid, $testing_mode) {
 		global $DB, $CFG;
 
+        require_once($CFG->dirroot.'/user/profile/lib.php');
+        require_once($CFG->dirroot.'/user/lib.php');
 		require_once($CFG->dirroot.'/blocks/exacomp/lib/lib.php');
+
+		$user = $DB->get_record('user', ['id' => $userid]);
+		if (!$user) {
+			throw new moodle_exception('user not found');
+		}
 
         /*CREATE COURSE CATEGORY*/
         //check if course category has already been created
@@ -212,7 +206,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 
         /*TESTED AND WORKING CORRECTLY TILL HERE*/
 
-		$user_course = $DB->get_record('course', ['shortname' => 'skillmgmt'.$user->id]);
+		$user_course = $DB->get_record('course', ['shortname' => 'SKILLSMGMT-'.$user->id]);
 		if (!$user_course) {
 			$categorycourses = $DB->get_records_sql('SELECT * FROM {course} WHERE category=?', array($categoryid));
 
@@ -223,8 +217,8 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$insert = new stdClass();
 			$insert->category = $categoryid;
 			$insert->sortorder = $category_sortoder + count($categorycourses) + 1;
-			$insert->fullname = 'Skillmanagement_'.$user->id.'_'.$user->lastname;
-				$insert->shortname = 'skillmgmt'.$user->id;
+			$insert->fullname = 'Skillsmanagement_'.$user->id.'_'.$user->lastname;
+			$insert->shortname = 'SKILLSMGMT-'.$user->id;
 			$insert->format = 'weeks';
 			$insert->summaryformat = 1;
 			$insert->startdate = time();
@@ -241,16 +235,42 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$page->blocks->add_block('exacomp', 'side-post', 4, false, 'course-view-*');
 			$page->blocks->add_block('exaport', 'side-post', 4, false, 'course-view-*');
 			$page->blocks->add_block('exastud', 'side-post', 4, false, 'course-view-*');
+
+			/*CREATE COURSE DESCRIPTION*/
+			$label = new stdClass();
+			$label->intro = get_string('course_description', 'auth_skillmanagement');
+			$label->intro .= html_writer::empty_tag('br');
+			$label->intro .= html_writer::empty_tag('img', array('src'=>new moodle_url('/auth/skillmanagement/pix/intro.png'), 'alt'=>'intro'));
+
+			$label->course = $user_course->id;
+			$label->introformat = 1;
+			$labelid = label_add_instance($label);
+
+			/*CREATE COURSE MODULE*/
+			$label_module = $DB->get_record('modules', array('name'=>'label'));
+			$section = $DB->get_record('course_sections', array('course'=>$user_course->id, 'section'=>0));
+
+			$cm = new stdClass();
+			$cm->course = $user_course->id;
+			$cm->module = $label_module->id;
+			$cm->instance = $labelid;
+			$cm->section = $section->id;
+			$cm->added = time();
+
+			$cmid = $DB->insert_record('course_modules', $cm);
+			course_add_cm_to_section($user_course->id, $cmid, 0);
+
+			$course_context = context_course::instance($user_course->id);
 		}
-		$user_course_id = $user_course->id;
 
-		if (!$DB->get_record(\block_exacomp::DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ])) {
-
+		$source = $DB->get_record(\block_exacomp::DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ]);
+		if (!$source) {
 			// TODO: import englisch version?
 			// if($user->lang == "en")
 
+			// TODO: activate
 			// import new for this user
-			\block_exacomp_data_importer::do_import_file('skills_mgmt_de.xml');
+			\block_exacomp_data_importer::do_import_file(__DIR__.'/skills_mgmt_de.xml');
 
 			// last imported source
 			$source = $DB->get_record_sql("SELECT * FROM {".\block_exacomp::DB_DATASOURCES."} ORDER BY id DESC LIMIT 1");
@@ -264,8 +284,6 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 		// last imported schooltype
 		$schooltype = $DB->get_record(\block_exacomp::DB_SCHOOLTYPES, ['source' => $source->id]);
 
-		// $DB->insert_record(\block_exacomp::DB_MDLTYPES, ['stid' => $schooltype->id, 'courseid' => $user_course->id]);
-
 		/*SET DEFAULT TYPES FOR COURSE*/
 		/*
 		if($user->lang == "en")
@@ -274,42 +292,16 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$schooltypes = array(3,4);	//Soziale Kompetenzen, Personale Kompetenzen
 		*/
 
-		block_exacomp_set_mdltype($schooltype->id,$user_course_id);
-		$subjects = block_exacomp_get_subjects_for_schooltype($user_course_id);
+		block_exacomp_set_mdltype([$schooltype->id],$user_course->id);
+		$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id);
 		$coursetopics = array();
 		foreach($subjects as $subject) {
 			$topics = block_exacomp_get_all_topics($subject->id);
 			foreach($topics as $topic)
 				$coursetopics[] = $topic->id;
 		}
-		block_exacomp_set_coursetopics($user_course_id,$coursetopics);
+		block_exacomp_set_coursetopics($user_course->id,$coursetopics);
 
-
-    	/*CREATE COURSE DESCRIPTION*/
-    	$label = new stdClass();
-    	$label->intro = get_string('course_description', 'auth_skillmanagement');
-    	$label->intro .= html_writer::empty_tag('br');
-    	$label->intro .= html_writer::empty_tag('img', array('src'=>new moodle_url('/auth/skillmanagement/pix/intro.png'), 'alt'=>'intro'));
-
-    	$label->course = $user_course_id;
-    	$label->introformat = 1;
-    	$labelid = label_add_instance($label);
-
-    	/*CREATE COURSE MODULE*/
-    	$label_module = $DB->get_record('modules', array('name'=>'label'));
-    	$section = $DB->get_record('course_sections', array('course'=>$user_course_id, 'section'=>0));
-
-    	$cm = new stdClass();
-    	$cm->course = $user_course_id;
-    	$cm->module = $label_module->id;
-    	$cm->instance = $labelid;
-    	$cm->section = $section->id;
-    	$cm->added = time();
-
-    	$cmid = $DB->insert_record('course_modules', $cm);
-    	course_add_cm_to_section($user_course_id, $cmid, 0);
-
-    	$course_context = context_course::instance($user_course_id);
 
     	/*DELETE OTHER MODULES FROM COURSE*/
     	//delete module recent activity
@@ -326,20 +318,41 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
     	course_delete_module($calendar->id);
 
     	/*CREATE SECOND USER WITH SAME PW*/
-        $user_trainer = $DB->get_record('user', array('id'=>$user->id));
+        $user_student = $DB->get_record('user', array('username'=>'student_'.$user->username));
+		if (!$user_student) {
+			$user_student = new stdClass();
+			$user_student->firstname = get_string('firstname', 'auth_skillmanagement');
+			$user_student->lastname = get_string('lastname', 'auth_skillmanagement');
+			$user_student->confirmed = 1;
+			$user_student->password = 'dummy'; // will be overwritten later
+			$user_student->email = $user->email;
+			$user_student->auth = 'skillmanagement';
+			$user_student->username = 'student_'.$user->username;
+			$user_student->lang = $user->lang;
+			$user_student->mnethostid = 1;
 
-        $user_trainee = $DB->get_record('user', array('username'=>'student_'.$user_trainer->username));
-		$user_trainee->confirmed = 1;
-		$user_trainee->idnumber = $user_trainer->id;
+			$user_student->id = user_create_user($user_student, false, false);
+			profile_save_data($user_student);
+		}
 
-        $DB->update_record('user', $user_trainee);
+        $DB->update_record('user', [
+			'confirmed' => 1,
+			'password' => $user->password,
+			// 'idnumber' => $user->id, // not sure why?!? connect student to teacher?!?
+			'id' => $user_student->id,
+		]);
 
-		$user_trainer->idnumber = $user_trainee->id;
-		$DB->update_record('user', $user_trainer);
+		/*
+        $DB->update_record('user', [
+			'confirmed' => 1,
+			// 'idnumber' => $user_student->id, // not sure why?!? connect student to teacher?!?
+			'id' => $user->id,
+		]);
+		*/
 
        	/*ENROL user_trainer AND user_trainee to $user_course */
 
-        $enrolment = array('roleid' => 3,'userid' => $user_trainer->id,
+        $enrolment = array('roleid' => 3,'userid' => $user->id,
 			'courseid' => $user_course->id,'timestart' => time(),
 			'timeend' => 0,'suspend' => 0);
 
@@ -371,7 +384,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$enrolment['timestart'], $enrolment['timeend'], $enrolment['suspend']);
 
 		//enrol participant
-		$enrolment = array('roleid' => 5,'userid' => $user_trainee->id,
+		$enrolment = array('roleid' => 5,'userid' => $user_student->id,
 			'courseid' => $user_course->id,'timestart' => time(),
 			'timeend' => 0,'suspend' => 0);
 
