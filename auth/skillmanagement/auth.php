@@ -313,7 +313,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
     	course_delete_module($calendar->id);
 
     	/*CREATE SECOND USER WITH SAME PW*/
-        $user_student = $DB->get_record('user', array('username'=>'student_'.$user->username));
+        $user_student = $DB->get_record('user', array('username'=>'employee_ '.$user->username));
 		if (!$user_student) {
 			$user_student = new stdClass();
 			$user_student->firstname = get_string('firstname', 'auth_skillmanagement');
@@ -322,7 +322,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$user_student->password = 'dummy'; // will be overwritten later
 			$user_student->email = $user->email;
 			$user_student->auth = 'skillmanagement';
-			$user_student->username = 'student_'.$user->username;
+			$user_student->username = 'employee_ '.$user->username;
 			$user_student->lang = $user->lang;
 			$user_student->mnethostid = 1;
 
@@ -541,7 +541,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
      * overwrite
      * @see auth_plugin_base::user_delete()
      * 
-     * Delete user course and student_user
+     * Delete user course and employee_user
      */
     function user_delete($olduser) {
     	global $DB;
