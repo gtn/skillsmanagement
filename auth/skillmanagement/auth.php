@@ -265,12 +265,8 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 
 		$source = $DB->get_record(\block_exacomp::DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ]);
 		if (!$source) {
-			// TODO: import englisch version?
-			// if($user->lang == "en")
-
-			// TODO: activate
 			// import new for this user
-			\block_exacomp_data_importer::do_import_file(__DIR__.'/skills_mgmt_de.xml');
+			\block_exacomp_data_importer::do_import_file(__DIR__.'/skills_mgmt_data.xml');
 
 			// last imported source
 			$source = $DB->get_record_sql("SELECT * FROM {".\block_exacomp::DB_DATASOURCES."} ORDER BY id DESC LIMIT 1");
@@ -281,19 +277,18 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$DB->update_record(\block_exacomp::DB_DATASOURCES, $source);
 		}
 
-		// last imported schooltype
-		$schooltype = $DB->get_record(\block_exacomp::DB_SCHOOLTYPES, ['source' => $source->id]);
+		// last imported schooltypes
+		$schooltype_ids = $DB->get_records_menu(\block_exacomp::DB_SCHOOLTYPES, ['source' => $source->id], null, 'sourceid AS id, id AS val');
 
-		/*SET DEFAULT TYPES FOR COURSE*/
-		/*
-		if($user->lang == "en")
-			$schooltypes = array(1,2); //Social Competencies and Personal Competencies
-		else
-			$schooltypes = array(3,4);	//Soziale Kompetenzen, Personale Kompetenzen
-		*/
+		block_exacomp_set_mdltype($schooltype_ids,$user_course->id);
 
-		block_exacomp_set_mdltype([$schooltype->id],$user_course->id);
-		$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id);
+		if ($user->lang == 'en') {
+			$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[492])
+				+ block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[493]);
+		} else {
+			$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[72])
+				+ block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[73]);
+		}
 		$coursetopics = array();
 		foreach($subjects as $subject) {
 			$topics = block_exacomp_get_all_topics($subject->id);
