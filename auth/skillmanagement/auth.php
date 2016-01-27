@@ -282,12 +282,12 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 
 		block_exacomp_set_mdltype($schooltype_ids,$user_course->id);
 
-		if ($user->lang == 'en') {
-			$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[492])
-				+ block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[493]);
-		} else {
+		if ($user->lang == 'de') {
 			$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[72])
 				+ block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[73]);
+		} else {
+			$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[492])
+				+ block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[493]);
 		}
 		$coursetopics = array();
 		foreach($subjects as $subject) {
