@@ -266,7 +266,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 		$source = $DB->get_record(\block_exacomp::DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ]);
 		if (!$source) {
 			// import new for this user
-			\block_exacomp_data_importer::do_import_file(__DIR__.'/skills_mgmt_data.xml');
+			\block_exacomp_data_importer::do_import_file(__DIR__.'/skills_mgmt_'.($user->lang == 'de' ? 'de' : 'en').'.xml');
 
 			// last imported source
 			$source = $DB->get_record_sql("SELECT * FROM {".\block_exacomp::DB_DATASOURCES."} ORDER BY id DESC LIMIT 1");
@@ -280,8 +280,11 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 		// last imported schooltypes
 		$schooltype_ids = $DB->get_records_menu(\block_exacomp::DB_SCHOOLTYPES, ['source' => $source->id], null, 'sourceid AS id, id AS val');
 
-		block_exacomp_set_mdltype($schooltype_ids,$user_course->id);
+		block_exacomp_set_mdltype($schooltype_ids, $user_course->id);
 
+		$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, 0);
+
+		/*
 		if ($user->lang == 'de') {
 			$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[72])
 				+ block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[73]);
@@ -289,6 +292,8 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$subjects = block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[492])
 				+ block_exacomp_get_subjects_for_schooltype($user_course->id, $schooltype_ids[493]);
 		}
+		*/
+
 		$coursetopics = array();
 		foreach($subjects as $subject) {
 			$topics = block_exacomp_get_all_topics($subject->id);
@@ -313,7 +318,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
     	course_delete_module($calendar->id);
 
     	/*CREATE SECOND USER WITH SAME PW*/
-        $user_student = $DB->get_record('user', array('username'=>'employee_ '.$user->username));
+        $user_student = $DB->get_record('user', array('username'=>'employee_'.$user->username));
 		if (!$user_student) {
 			$user_student = new stdClass();
 			$user_student->firstname = get_string('firstname', 'auth_skillmanagement');
@@ -322,7 +327,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$user_student->password = 'dummy'; // will be overwritten later
 			$user_student->email = $user->email;
 			$user_student->auth = 'skillmanagement';
-			$user_student->username = 'employee_ '.$user->username;
+			$user_student->username = 'employee_'.$user->username;
 			$user_student->lang = $user->lang;
 			$user_student->mnethostid = 1;
 
