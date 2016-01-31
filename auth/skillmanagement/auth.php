@@ -27,10 +27,11 @@
  */
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->libdir.'/authlib.php');
-require_once($CFG->dirroot.'/course/lib.php');
-require_once($CFG->dirroot.'/mod/label/lib.php');
-require_once($CFG->dirroot.'/lib/classes/session/manager.php');
+require_once $CFG->libdir.'/authlib.php';
+require_once $CFG->dirroot.'/course/lib.php';
+require_once $CFG->dirroot.'/mod/label/lib.php';
+require_once $CFG->dirroot.'/lib/classes/session/manager.php';
+require_once $CFG->dirroot.'/blocks/exacomp/lib/lib.php';
 
 /**
  * Skillmanagement authentication plugin.
@@ -263,22 +264,22 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 			$course_context = context_course::instance($user_course->id);
 		}
 
-		$source = $DB->get_record(\block_exacomp::DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ]);
+		$source = $DB->get_record(\block_exacomp\DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ]);
 		if (!$source) {
 			// import new for this user
 			\block_exacomp_data_importer::do_import_file(__DIR__.'/skills_mgmt_'.($user->lang == 'de' ? 'de' : 'en').'.xml');
 
 			// last imported source
-			$source = $DB->get_record_sql("SELECT * FROM {".\block_exacomp::DB_DATASOURCES."} ORDER BY id DESC LIMIT 1");
+			$source = $DB->get_record_sql("SELECT * FROM {".\block_exacomp\DB_DATASOURCES."} ORDER BY id DESC LIMIT 1");
 
 			// change source
 			$source->source = 'SKILLSMGMT-'.$user->id;
 			$source->name = 'Skills Management for '.fullname($user);
-			$DB->update_record(\block_exacomp::DB_DATASOURCES, $source);
+			$DB->update_record(\block_exacomp\DB_DATASOURCES, $source);
 		}
 
 		// last imported schooltypes
-		$schooltype_ids = $DB->get_records_menu(\block_exacomp::DB_SCHOOLTYPES, ['source' => $source->id], null, 'sourceid AS id, id AS val');
+		$schooltype_ids = $DB->get_records_menu(\block_exacomp\DB_SCHOOLTYPES, ['source' => $source->id], null, 'sourceid AS id, id AS val');
 
 		block_exacomp_set_mdltype($schooltype_ids, $user_course->id);
 
@@ -414,6 +415,10 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 
 		$enrol->enrol_user($instance, $enrolment['userid'], $enrolment['roleid'],
 			$enrolment['timestart'], $enrolment['timeend'], $enrolment['suspend']);
+		
+		// elove
+		if(!$DB->record_exists(\block_exacomp\DB_EXTERNAL_TRAINERS, array('trainerid'=>$user->id,'studentid'=>$user_student->id)))
+			$DB->insert_record(\block_exacomp\DB_EXTERNAL_TRAINERS, array('trainerid'=>$user->id,'studentid'=>$user_student->id));
 	}
 
     /**
@@ -564,5 +569,3 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
     }
 
 }
-
-
