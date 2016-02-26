@@ -32,6 +32,7 @@ require_once $CFG->dirroot.'/course/lib.php';
 require_once $CFG->dirroot.'/mod/label/lib.php';
 require_once $CFG->dirroot.'/lib/classes/session/manager.php';
 require_once $CFG->dirroot.'/blocks/exacomp/lib/lib.php';
+require_once $CFG->dirroot.'/blocks/exacomp/classes/data.php';
 
 /**
  * Skillmanagement authentication plugin.
@@ -267,7 +268,7 @@ class auth_plugin_skillmanagement extends auth_plugin_base {
 		$source = $DB->get_record(\block_exacomp\DB_DATASOURCES, [ 'source' => 'SKILLSMGMT-'.$user->id ]);
 		if (!$source) {
 			// import new for this user
-			\block_exacomp_data_importer::do_import_file(__DIR__.'/skills_mgmt_'.($user->lang == 'de' ? 'de' : 'en').'.xml');
+			\block_exacomp\data_importer::do_import_file(__DIR__.'/skills_mgmt_'.($user->lang == 'de' ? 'de' : 'en').'.xml');
 
 			// last imported source
 			$source = $DB->get_record_sql("SELECT * FROM {".\block_exacomp\DB_DATASOURCES."} ORDER BY id DESC LIMIT 1");
